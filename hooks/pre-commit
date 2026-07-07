@@ -1,0 +1,58 @@
+#!/bin/bash
+#
+# DOX DELETION GUARD — ENFORCED
+# Blocks commits that delete files outside tmp/ directories.
+#
+# Rule: Deletions ONLY allowed in paths containing /tmp/ or ^tmp/
+#
+# To bypass: git commit --no-verify  (use with extreme caution)
+
+echo "🔒 DOX Deletion Guard: checking for deletions..." >&2
+
+# Get list of deleted files (excluding renames, including unstaged)
+DELETED=$(git diff --cached --diff-filter=D --name-only 2>/dev/null)
+
+if [ -z "$DELETED" ]; then
+    # No deletions in staged changes
+    exit 0
+fi
+
+# Filter out deletions in tmp/ — those are allowed
+ALLOWED=()
+BLOCKED=()
+
+while IFS= read -r file; do
+    # Skip empty lines
+    [ -z "$file" ] && continue
+
+    # Check if path contains /tmp/ or starts with tmp/
+    if echo "$file" | grep -qE '(^|/)tmp/'; then
+        ALLOWED+=("$file")
+    else
+        BLOCKED+=("$file")
+    fi
+done <<< "$DELETED"
+
+# If any deletions outside tmp/, block the commit
+if [ ${#BLOCKED[@]} -gt 0 ]; then
+    echo "" >&2
+    echo "❌ COMMIT BLOCKED — DOX Deletion Guard" >&2
+    echo "   Deletions outside tmp/ are not allowed." >&2
+    echo "   Superseded code must be archived or marked, never deleted." >&2
+    echo "" >&2
+    echo "   Blocked deletions:" >&2
+    for f in "${BLOCKED[@]}"; do
+        echo "     ❌ $f" >&2
+    done
+    [ ${#ALLOWED[@]} -gt 0 ] && echo "" >&2
+    for f in "${ALLOWED[@]}"; do
+        echo "     ✅ $f (tmp/ — allowed)" >&2
+    done
+    echo "" >&2
+    echo "   Fix: Move deleted files to archive/ or tmp/ first." >&2
+    echo "   Or use: git commit --no-verify (overrides safety)" >&2
+    exit 1
+fi
+
+echo "   ✅ All deletions are within tmp/ — proceeding." >&2
+exit 0
