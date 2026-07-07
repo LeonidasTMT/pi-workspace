@@ -1,0 +1,6 @@
+# Temporary prototypes — disposable, fast iteration
+tmp/
+
+# OS
+.DS_Store
+Thumbs.db
