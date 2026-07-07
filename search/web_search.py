@@ -7,8 +7,76 @@ import sys
 import os
 import time
 
-OPERA_PORT = 9222
-OPERA_BASE = f'http://127.0.0.1:{OPERA_PORT}'
+# ╔══════════════════════════════════════════════════════════╗
+# ║  CDP COMMAND WHITELIST — DOX ENFORCEMENT                 ║
+# ║  Only these methods are allowed. Everything else blocked. ║
+# ╚══════════════════════════════════════════════════════════╝
+# Dangerous CDP methods (blocked):
+#   Storage.clearBrowserCookies  — wipes ALL cookies
+#   Storage.clearBrowserData     — wipes history, cookies, cache
+#   Network.clearBrowserCookies  — wipes cookies
+#   Network.clearBrowserCache    — wipes cache
+#   Browser.close                — kills Opera
+#   Browser.crash                — crashes Opera
+#   Page.navigate (to chrome://) — opens settings/pages
+#   Input.dispatchMouseEvent     — simulates clicks
+#   Input.dispatchKeyEvent       — simulates key presses
+#
+# Safe: only navigation to http(s), JS eval, page creation, domain refresh
+
+ALLOWED_CDP_METHODS = {
+    'Target.createTarget',
+    'Target.getTargetInfo',
+    'Target.getTargets',
+    'Page.navigate',            # restricted to http/https only
+    'Page.reload',
+    'Page.getNavigationHistory',
+    'Runtime.evaluate',
+    'Runtime.enable',
+    'DOM.getDocument',
+    'DOM.enable',
+    'CSS.enable',
+    'Network.enable',
+    'Page.enable',
+    'Browser.getVersion',
+}
+
+def _is_safe_url(url):
+    """Only allow http(s) navigation. Block chrome://, edge://, about:, file:."""
+    lower = url.lower().split('?')[0].split('#')[0].rstrip('/')
+    return lower.startswith('http://') or lower.startswith('https://')
+
+def _is_safe_expression(expression):
+    """Block JS that accesses localStorage/sessionStorage/cookie/document.cookie."""
+    expr_lower = expression.lower()
+    for pattern in ['localstorage', 'sessionstorage', 'document.cookie',
+                    'navigator.cookieenabled', 'indexeddb', 'opendatabase',
+                    'clearcookies', 'deletecookies']:
+        if pattern in expr_lower:
+            return False
+    return True
+
+def check_cdp_cmd(method, params=None):
+    """Validate CDP command against whitelist. Returns error string or None."""
+    params = params or {}
+
+    if method not in ALLOWED_CDP_METHODS:
+        return f'CDP method not allowed: {method}'
+
+    # Page.navigate: only http(s) URLs
+    if method == 'Page.navigate':
+        url = params.get('url', '')
+        if not _is_safe_url(url):
+            return f'Navigation blocked (unsafe URL): {url}'
+
+    # Runtime.evaluate: block storage/cookie access
+    if method == 'Runtime.evaluate':
+        expr = params.get('expression', '')
+        if not _is_safe_expression(expr):
+            return 'Runtime.evaluate blocked: storage/cookie access not allowed'
+
+    return None  # allowed
+
 
 def ensure_opera():
     """Ensure Opera is running on our port."""
@@ -67,7 +135,12 @@ def close_tab(tab_id):
         pass
 
 async def send_cmd(ws, method, params=None, timeout=15):
-    """Send a CDP command and get the response."""
+    """Send a CDP command and get the response. WHITELISTED only."""
+    # ── CDP guard ──
+    err = check_cdp_cmd(method, params)
+    if err:
+        raise RuntimeError(f'❌ CDP BLOCKED — {err}')
+
     req = {'id': 1, 'method': method, 'params': params or {}}
     await ws.send(json.dumps(req))
     for _ in range(int(timeout * 2)):
