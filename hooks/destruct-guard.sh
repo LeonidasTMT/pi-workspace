@@ -191,38 +191,31 @@ shred() {
 # ────────────────────────────────────────────────────────
 
 _dox_selftest() {
-    local pass=0
     local fail=0
 
-    if _dox_is_protected "/c/Users/User/AppData/Local/Opera Software/Opera GX Stable/Cookies"; then
-        ((pass++))
-    else
+    if ! _dox_is_protected "/c/Users/User/AppData/Local/Opera Software/Opera GX Stable/Cookies"; then
         ((fail++)); echo "   ❌ SELFTEST: Opera Cookies not detected as protected" >&2
     fi
-
-    if _dox_is_protected "/c/Users/User/.pi/agent/auth.json"; then
-        ((pass++))
-    else
+    if ! _dox_is_protected "/c/Users/User/.pi/agent/auth.json"; then
         ((fail++)); echo "   ❌ SELFTEST: .pi/auth not detected as protected" >&2
     fi
-
-    if ! _dox_is_protected "hooks/pre-commit"; then
-        ((pass++))
-    else
+    if _dox_is_protected "hooks/pre-commit"; then
         ((fail++)); echo "   ❌ SELFTEST: hooks/pre-commit incorrectly marked protected" >&2
     fi
-
-    if _dox_is_tmp_path "tmp/test"; then
-        ((pass++))
-    else
+    if ! _dox_is_tmp_path "tmp/test"; then
         ((fail++)); echo "   ❌ SELFTEST: tmp/test not detected as tmp/" >&2
     fi
 
-    [[ $fail -gt 0 ]] && echo "   ⚠️  $fail self-test(s) FAILED" >&2
+    [[ $fail -gt 0 ]] && return 1
+    return 0
 }
 
 echo "🛡️  DOX Destruction Guard loaded" >&2
 echo "   Protected: ${#PROTECTED_PATHS[@]} paths (absolute block)" >&2
 echo "   Blocked: rm/del/rmdir/shred outside tmp/" >&2
 echo "   Override: export DESTRUCT_OVERRIDE=1 (does NOT bypass protected)" >&2
-_dox_selftest >&2
+if _dox_selftest 2>/dev/null; then
+    echo "   Self-test: ✅ PASS" >&2
+else
+    echo "   ⚠️  SELF-TEST FAILED — check protected paths" >&2
+fi
