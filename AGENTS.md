@@ -7,6 +7,9 @@
 
 - AGENTS.md files are binding work contracts for their subtrees
 - Work products, source materials, instructions, records, assets, and durable docs must stay understandable from the nearest applicable AGENTS.md plus every parent AGENTS.md above it
+- **NO DELETIONS of committed files** — `tmp/` is the only place anything can be deleted
+- `tmp/` directories exist inside every module for disposable iteration (`search/tmp/`, `skills/tmp/`, `tmp/`, etc.)
+- If old code is superseded, archive or mark it — never delete
 
 ## Read Before Editing
 
@@ -82,11 +85,16 @@ Default section order:
 - Search/extraction must create new tabs, never touch existing user tabs
 - User works on Windows with cp932 console encoding — route Unicode output through temp files or stdout.buffer
 
-### Code Workflow
-- Temporary iteration happens in `tmp/` — fast, disposable prototypes
-- Once something works, move it into the proper structure and commit to git
-- Never delete committed code — git history is the restore point
-- `tmp/` is excluded from version control and safe to wipe at any time
+### Code & Deletion Rules — ENFORCED
+- **NEVER delete committed files** — git is the restore point, not a suggestion
+- **Temporary iteration** happens in `tmp/` inside any module/tool/directory
+- `tmp/` is disposable — safe to wipe, excluded from git
+- Once something works in `tmp/`, move it into the proper structure and commit
+- New tools/extensions get their own `tmp/` for prototyping:
+  - `search/tmp/` — prototype search scripts before committing to `search/`
+  - `skills/tmp/` — prototype skill logic before committing to `skills/`
+  - Any new top-level module can create `that-module/tmp/`
+- If old code is superseded, mark it (rename, comment, move to `archive/`) — never delete
 
 ## Tech Stack
 
