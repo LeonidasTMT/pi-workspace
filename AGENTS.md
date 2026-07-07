@@ -85,16 +85,14 @@ Default section order:
 - Search/extraction must create new tabs, never touch existing user tabs
 - User works on Windows with cp932 console encoding — route Unicode output through temp files or stdout.buffer
 
-### Code & Deletion Rules — ENFORCED
-- **NEVER delete committed files** — git is the restore point, not a suggestion
-- **Temporary iteration** happens in `tmp/` inside any module/tool/directory
-- `tmp/` is disposable — safe to wipe, excluded from git
-- Once something works in `tmp/`, move it into the proper structure and commit
-- New tools/extensions get their own `tmp/` for prototyping:
-  - `search/tmp/` — prototype search scripts before committing to `search/`
-  - `skills/tmp/` — prototype skill logic before committing to `skills/`
-  - Any new top-level module can create `that-module/tmp/`
-- If old code is superseded, mark it (rename, comment, move to `archive/`) — never delete
+### Deletion Guards — ENFORCED
+- **Git pre-commit hook** (`hooks/pre-commit`) — blocks commits that delete files outside `tmp/`
+- **Shell destruction guard** (`hooks/destruct-guard.sh`) — intercepts `rm`, `del`, `rmdir`, `shred` at the shell level
+- Guards are loaded automatically via `~/.bashrc`
+- Override: `export DESTRUCT_OVERRIDE=1` (then `unset` to re-enable)
+- `tmp/` directories are the only place deletion is allowed
+- Superseded code: archive, mark, or move — never delete
+- `git rm` → intercepted by pre-commit hook; `rm -rf` → intercepted by shell guard
 
 ## Tech Stack
 
@@ -124,6 +122,7 @@ Default section order:
 
 ## Child DOX Index
 
+- **hooks/** — DOX guard implementation (shell interception, git hooks)
 - **search/** — Web search and extraction via Opera CDP
 - **skills/** — AI agent skills, extensions, and reusable procedures
 - **tmp/** — Temporary prototypes (excluded from git, disposable)
