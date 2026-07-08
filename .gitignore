@@ -1,6 +1,9 @@
 # Temporary prototypes — disposable, fast iteration
 tmp/
 
+# Pi bubble signals (runtime)
+.pi-status/
+
 # Python
 __pycache__/
 *.pyc
