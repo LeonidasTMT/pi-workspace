@@ -7,6 +7,7 @@ Always-on-top floating window showing pi's real-time status. Optional message pa
 ## Files
 
 - **`status.py`** — The app. Tkinter-based, always-on-top, draggable.
+- **`watcher.py`** — AI activity watcher. Parses session log to detect states.
 - **`test_status.py`** — Signal protocol tests. Run: `python bubble/test_status.py`
 
 ## Signal Protocol
@@ -15,10 +16,24 @@ Signal files live in `.pi-status/` (gitignored):
 
 | File | Writer | Content |
 |------|--------|---------|
-| `state` | Me (via `_pi-start`/`_pi-end`) | WORKING / DONE / IDLE / WAITING / NEW |
+| `state` | Watcher (via session log) | THINKING / WRITING / EDITING / WORKING / EXPLORING / IDLE |
 | `input` | You (via bubble) | My latest message |
 | `response` | Me | My latest reply |
 | `history` | Me (append-only) | Chat log, last 10 entries |
+
+## Watcher Activity Detection
+
+`watcher.py` polls the latest session `.jsonl` file every 200ms:
+
+| Session Line | State |
+|--------------|-------|
+| `toolCall: edit` | EDITING |
+| `toolCall: write` | WRITING |
+| `toolCall: read` | EXPLORING |
+| `toolCall: bash` | WORKING |
+| `thinking` | THINKING |
+| `user` message | IDLE |
+| No growth >5s | IDLE |
 
 ## State Machine
 
