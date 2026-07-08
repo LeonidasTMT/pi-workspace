@@ -36,11 +36,30 @@ THEME = {
     'fg_dim':    '#6c7086',
     'border':    '#313244',
     'bg_input':  '#181825',
-    'idle':      '#6c7086',
-    'working':   '#f9e24c',
-    'done':      '#a6e3a1',
-    'waiting':   '#89b4fa',
-    'new':       '#a6e3a1',
+    'IDLE':      '#6c7086',
+    'WORKING':   '#f9e24c',
+    'THINKING':  '#cba6f7',
+    'WRITING':   '#f38ba8',
+    'EDITING':   '#fab387',
+    'DONE':      '#a6e3a1',
+    'WAITING':   '#89b4fa',
+    'NEW':       '#a6e3a1',
+    'INSTALLING':'#89b4fa',
+    'EXPLORING': '#94e2d0',
+}
+
+# Human labels
+STATE_LABELS = {
+    'IDLE': 'idle',
+    'WORKING': 'working',
+    'THINKING': 'thinking',
+    'WRITING': 'writing',
+    'EDITING': 'editing',
+    'DONE': 'done',
+    'WAITING': 'waiting',
+    'NEW': 'new message',
+    'INSTALLING': 'installing',
+    'EXPLORING': 'exploring',
 }
 
 # ── File I/O ──
@@ -112,7 +131,7 @@ class BubbleApp:
         self.sbar = tk.Frame(self.m, bg=THEME['bg'])
         self.sbar.pack(fill=tk.X, padx=6, pady=4)
 
-        self.dot = tk.Label(self.sbar, text='\u25cf', fg=THEME['idle'],
+        self.dot = tk.Label(self.sbar, text='\u25cf', fg=THEME['IDLE'],
                             bg=THEME['bg'], font=('Segoe UI Emoji', 10))
         self.dot.pack(side=tk.LEFT)
 
@@ -146,20 +165,17 @@ class BubbleApp:
         self.inp.pack(fill=tk.X, expand=True)
         self.inp.bind('<Return>', self._send)
 
-        # ── Mouse events on master ──
-        # Click/move/release for drag-vs-click detection
-        self.m.bind('<Button-1>', self._on_down)
-        self.m.bind('<B1-Motion>', self._on_move)
-        self.m.bind('<ButtonRelease-1>', self._on_release)
+        # ── Mouse events on root — covers entire window ──
+        self.root.bind('<Button-1>', self._on_down)
+        self.root.bind('<B1-Motion>', self._on_move)
+        self.root.bind('<ButtonRelease-1>', self._on_release)
 
         # Right-click = exit
-        self.m.bind('<Button-3>', lambda e: self.root.destroy())
+        self.root.bind('<Button-3>', lambda e: self.root.destroy())
 
-        # Prevent interactive widgets from starting drag
+        # Interactive widgets ignore drag (they handle their own clicks)
         self.txt.bind('<Button-1>', lambda e: e.widget.focus_set())
         self.inp.bind('<Button-1>', lambda e: e.widget.focus_set())
-        self.inp.bind('<B1-Motion>', lambda e: 'break')
-        self.inp.bind('<ButtonRelease-1>', lambda e: 'break')
 
         # Window close = exit
         self.root.protocol('WM_DELETE_WINDOW', lambda: self.root.destroy())
@@ -268,15 +284,9 @@ class BubbleApp:
         self.root.after(200, self._poll)
 
     def _update(self):
-        color = {
-            'IDLE': THEME['idle'],
-            'WORKING': THEME['working'],
-            'DONE': THEME['done'],
-            'WAITING': THEME['waiting'],
-            'NEW': THEME['new'],
-        }.get(self.state, THEME['idle'])
-        self.dot.configure(fg=color)
-        self.lbl.configure(text=self.state.lower().replace('_', ' '))
+        c = THEME.get(self.state, THEME['IDLE'])
+        self.dot.configure(fg=c)
+        self.lbl.configure(text=STATE_LABELS.get(self.state, self.state.lower()))
 
     def _load_pos(self):
         p = load_pos()
