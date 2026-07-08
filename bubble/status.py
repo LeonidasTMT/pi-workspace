@@ -16,7 +16,14 @@ import time
 import pathlib
 
 # ── Config ──
-WORKSPACE = os.environ.get('PI_WORKSPACE') or '/c/Users/User/Documents/GitHub/pi-workspace'
+# Resolve workspace: check env, then common paths
+_WORKSPACE_CANDIDATES = [
+    os.environ.get('PI_WORKSPACE', ''),
+    os.environ.get('HOME', '') + '/Documents/GitHub/pi-workspace',
+    'C:/Users/User/Documents/GitHub/pi-workspace',
+]
+WORKSPACE = next((p for p in _WORKSPACE_CANDIDATES if p and os.path.exists(p)),
+                 'C:/Users/User/Documents/GitHub/pi-workspace')
 PI_STATUS = os.path.join(WORKSPACE, '.pi-status')
 STATE_FILE = os.path.join(PI_STATUS, 'state')
 INPUT_FILE = os.path.join(PI_STATUS, 'input')
