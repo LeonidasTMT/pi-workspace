@@ -25,7 +25,7 @@ SESSIONS_DIR = os.path.join(
     '.pi', 'agent', 'sessions'
 )
 
-IDLE_AFTER = 1.5
+IDLE_AFTER = 5.0  # seconds of no growth before marking IDLE (AI turns have pauses)
 POLL = 0.2
 
 # Classify assistant activity
