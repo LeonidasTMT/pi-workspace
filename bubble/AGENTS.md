@@ -53,7 +53,7 @@ _pi-end      # write DONE to .pi-status/state
 - **Click**: Toggle expand/collapse
 - **Drag**: Move window (saves position)
 - **Right-click**: Exit completely
-- **Close (X)**: Minimize, keep running
+- **Close (X)**: Exit (right-click also exits)
 
 ## Position
 

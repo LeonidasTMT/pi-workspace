@@ -161,8 +161,8 @@ class BubbleApp:
         self.inp.bind('<B1-Motion>', lambda e: 'break')
         self.inp.bind('<ButtonRelease-1>', lambda e: 'break')
 
-        # Window close = minimize (keep running)
-        self.root.protocol('WM_DELETE_WINDOW', lambda: self.root.withdraw())
+        # Window close = exit
+        self.root.protocol('WM_DELETE_WINDOW', lambda: self.root.destroy())
 
     # ── Drag vs Click ──
     def _on_down(self, event):
