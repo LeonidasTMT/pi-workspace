@@ -2,134 +2,88 @@
 """
 Pi Status Bubble — always-on-top floating status + message bubble.
 
-Polls .pi-status/state for current AI status.
-Writes messages to .pi-status/input when I type.
-Auto-expands when state=NEW (unread reply).
+Auto-launched via ~/.bashrc.
+Polls .pi-status/state every 200ms.
+Drag to move. Click to expand/collapse.
+Type + Enter to send messages. Right-click to exit.
 
-Usage: python bubble/status.py
+Launch: python bubble/status.py
 """
 
-import sys
-import os
-import json
-import time
-import pathlib
+import sys, os, json, time
 
-# ── Config ──
-# Resolve workspace: check env, then common paths
-_WORKSPACE_CANDIDATES = [
-    os.environ.get('PI_WORKSPACE', ''),
-    os.environ.get('HOME', '') + '/Documents/GitHub/pi-workspace',
-    'C:/Users/User/Documents/GitHub/pi-workspace',
-]
-WORKSPACE = next((p for p in _WORKSPACE_CANDIDATES if p and os.path.exists(p)),
-                 'C:/Users/User/Documents/GitHub/pi-workspace')
+# ── Paths ──
+_WORKSPACE = os.environ.get('PI_WORKSPACE', '')
+if not _WORKSPACE or not os.path.exists(_WORKSPACE):
+    _WORKSPACE = 'C:/Users/User/Documents/GitHub/pi-workspace'
+WORKSPACE = _WORKSPACE
+
 PI_STATUS = os.path.join(WORKSPACE, '.pi-status')
 STATE_FILE = os.path.join(PI_STATUS, 'state')
 INPUT_FILE = os.path.join(PI_STATUS, 'input')
 RESPONSE_FILE = os.path.join(PI_STATUS, 'response')
 HISTORY_FILE = os.path.join(PI_STATUS, 'history')
-
 POSITION_FILE = os.path.join(
     os.environ.get('LOCALAPPDATA', os.path.expanduser('~')),
     'pi-bubble', 'position.json'
 )
+os.makedirs(PI_STATUS, exist_ok=True)
 
-DEFAULT_POS = {'x': 1200, 'y': 20, 'w': 175, 'h': 30}
-POLL_MS = 500
-MAX_HISTORY_LINES = 10
-
-# ── Color theme ──
+# ── Theme ──
 THEME = {
-    'bg':           '#1a1a2e',
-    'fg':           '#e0e0e0',
-    'bg_input':     '#16213e',
-    'fg_input':     '#ffffff',
-    'border':       '#333366',
-    'state_IDLE':   '#555555',
-    'state_WORKING':'#ffaa00',
-    'state_DONE':   '#00cc66',
-    'state_WAITING':'#4488ff',
-    'state_NEW':    '#00cc66',
+    'bg':        '#1e1e2e',
+    'fg':        '#cdd6f4',
+    'fg_dim':    '#6c7086',
+    'border':    '#313244',
+    'bg_input':  '#181825',
+    'idle':      '#6c7086',
+    'working':   '#f9e24c',
+    'done':      '#a6e3a1',
+    'waiting':   '#89b4fa',
+    'new':       '#a6e3a1',
 }
 
-# ── Ensure dirs ──
-os.makedirs(PI_STATUS, exist_ok=True)
-os.makedirs(os.path.dirname(POSITION_FILE), exist_ok=True)
-
-# ── Load/save position ──
-def load_pos():
-    try:
-        with open(POSITION_FILE, 'r') as f:
-            return json.load(f)
-    except Exception:
-        return DEFAULT_POS
-
-def save_pos(pos):
-    try:
-        os.makedirs(os.path.dirname(POSITION_FILE), exist_ok=True)
-        with open(POSITION_FILE, 'w') as f:
-            json.dump(pos, f)
-    except Exception:
-        pass
-
+# ── File I/O ──
 def read_state():
-    """Read .pi-status/state, return stripped string."""
-    try:
-        with open(STATE_FILE, 'r') as f:
-            return f.read().strip()
-    except FileNotFoundError:
-        return 'IDLE'
-    except Exception:
-        return 'IDLE'
+    try: return open(STATE_FILE).read().strip()
+    except: return 'IDLE'
 
 def read_response():
-    """Read last AI response."""
-    try:
-        with open(RESPONSE_FILE, 'r') as f:
-            return f.read().strip()[:2000]
-    except FileNotFoundError:
-        return ''
+    try: return open(RESPONSE_FILE, encoding='utf-8').read().strip()[:2000]
+    except: return ''
 
 def read_input():
-    """Read what I typed."""
-    try:
-        with open(INPUT_FILE, 'r') as f:
-            return f.read().strip()
-    except FileNotFoundError:
-        return ''
+    try: return open(INPUT_FILE, encoding='utf-8').read().strip()
+    except: return ''
 
 def send_message(text):
-    """Write message to .pi-status/input, set state=WAITING, log to history."""
     try:
-        with open(INPUT_FILE, 'w', encoding='utf-8') as f:
-            f.write(text)
-        with open(STATE_FILE, 'w') as f:
-            f.write('WAITING')
-        # Append to history
-        try:
-            with open(HISTORY_FILE, 'a', encoding='utf-8') as f:
-                f.write(f'[IN {time.strftime("%H:%M:%S")}] {text}\n')
-        except Exception:
-            pass
-        return True
+        with open(INPUT_FILE, 'w', encoding='utf-8') as f: f.write(text)
+        with open(STATE_FILE, 'w') as f: f.write('WAITING')
+        with open(HISTORY_FILE, 'a', encoding='utf-8') as f:
+            f.write(f'[IN {time.strftime("%H:%M:%S")}] {text}\n')
     except Exception as e:
-        print(f'Failed to send message: {e}', file=sys.stderr)
+        print(f'Send failed: {e}', file=sys.stderr)
         return False
+    return True
 
-def get_last_response_preview():
-    """Get a short preview of the last AI response."""
-    response = read_response()
-    if not response:
-        return ''
-    lines = response.split('\n')
-    if len(lines) > 3:
-        lines = lines[:3]
-        lines.append('...')
-    return '\n'.join(lines)
+def load_pos():
+    try: return json.load(open(POSITION_FILE))
+    except: return {}
 
-# ── Tkinter app ──
+def save_pos(app):
+    try:
+        os.makedirs(os.path.dirname(POSITION_FILE), exist_ok=True)
+        json.dump({'x': app.root.winfo_x(), 'y': app.root.winfo_y()},
+                  open(POSITION_FILE, 'w'))
+    except: pass
+
+# ── Tkinter ──
 import tkinter as tk
+
+COL_W, COL_H = 185, 32
+EXP_W, EXP_H = 300, 380
+DRAG_THRESH = 5
 
 class BubbleApp:
     def __init__(self):
@@ -137,274 +91,197 @@ class BubbleApp:
         self.root.title('pi')
         self.root.configure(bg=THEME['bg'])
         self.root.attributes('-topmost', True)
-        self.root.overrideredirect(True)  # No title bar
+        self.root.overrideredirect(True)
 
         self.state = 'IDLE'
         self.expanded = False
-        self.last_response_shown = ''
-        self.drag_data = {'x': 0, 'y': 0}
+        self._drag_start = None
+        self._dragging = False
 
-        self._init_widgets()
-        self._load_position()
-        self._bind_drag()
-        self._start_poll()
+        self._build()
+        self._load_pos()
+        self.root.after(0, lambda: self._update())
+        self.root.after(200, self._poll)
 
-    def _init_widgets(self):
-        """Build both collapsed and expanded UI."""
-        # ── Status bar (always visible) ──
-        self.status_frame = tk.Frame(self.root, bg=THEME['bg'])
-        self.status_frame.pack(fill=tk.BOTH, ipadx=8, ipady=4)
+    def _build(self):
+        """Single master frame — handles all mouse events."""
+        self.m = tk.Frame(self.root, bg=THEME['bg'])
+        self.m.pack(fill=tk.BOTH, expand=True)
 
-        self.dot = tk.Label(self.root, text='●', fg=THEME['state_IDLE'],
-                           bg=THEME['bg'], font=('Segoe UI', 10))
-        self.dot.pack(side=tk.LEFT, padx=(2, 4))
+        # Status bar
+        self.sbar = tk.Frame(self.m, bg=THEME['bg'])
+        self.sbar.pack(fill=tk.X, padx=6, pady=4)
 
-        self.state_label = tk.Label(self.root, text='idle', fg=THEME['fg'],
-                                    bg=THEME['bg'], font=('Segoe UI', 9))
-        self.state_label.pack(side=tk.LEFT)
+        self.dot = tk.Label(self.sbar, text='\u25cf', fg=THEME['idle'],
+                            bg=THEME['bg'], font=('Segoe UI Emoji', 10))
+        self.dot.pack(side=tk.LEFT)
 
-        # ── Expanded content (hidden by default) ──
-        self.expanded_frame = tk.Frame(self.root, bg=THEME['bg'])
-        self.expanded_frame.pack_forget()  # Hidden
+        self.lbl = tk.Label(self.sbar, text='idle', fg=THEME['fg'],
+                            bg=THEME['bg'], font=('Segoe UI', 9))
+        self.lbl.pack(side=tk.LEFT)
 
-        # Separator
-        sep = tk.Frame(self.expanded_frame, bg=THEME['border'], height=1)
-        sep.pack(fill=tk.X, padx=4, pady=(0, 4))
+        # Expanded panel (hidden)
+        self.pn = tk.Frame(self.m, bg=THEME['bg'])
 
-        # Response area (scrollable)
-        self.resp_frame = tk.Frame(self.expanded_frame, bg=THEME['bg'],
-                                   relief=tk.GROOVE, bd=1)
-        self.resp_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=2)
+        tk.Frame(self.pn, bg=THEME['border'], height=1).pack(fill=tk.X, pady=(0, 4))
 
-        self.resp_scroll = tk.Scrollbar(self.resp_frame, orient=tk.VERTICAL,
-                                        bg=THEME['bg'])
-        self.resp_text = tk.Text(self.resp_frame, bg=THEME['bg_input'],
-                                fg=THEME['fg_input'], font=('Consolas', 9),
-                                wrap=tk.WORD, state=tk.DISABLED,
-                                yscrollcommand=self.resp_scroll.set,
-                                padx=6, pady=4)
-        self.resp_scroll.config(command=self.resp_text.yview)
-        self.resp_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.resp_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # Response display
+        self.txt = tk.Text(self.pn, bg=THEME['bg_input'], fg=THEME['fg'],
+                          font=('Consolas', 9), wrap=tk.WORD, state=tk.DISABLED,
+                          padx=6, pady=4, relief=tk.GROOVE, bd=1,
+                          highlightthickness=0, cursor='arrow')
+        self.txt.pack(fill=tk.BOTH, expand=True, padx=4, pady=2)
 
-        # Input area
-        self.input_frame = tk.Frame(self.expanded_frame, bg=THEME['bg'])
-        self.input_frame.pack(fill=tk.X, padx=4, pady=(4, 4))
+        # Input
+        self.ifr = tk.Frame(self.pn, bg=THEME['bg'])
+        self.ifr.pack(fill=tk.X, padx=4, pady=(0, 4))
 
-        self.input_var = tk.StringVar()
-        self.input_entry = tk.Entry(self.input_frame, textvariable=self.input_var,
-                                   bg=THEME['bg_input'], fg=THEME['fg_input'],
-                                   insertbackground=THEME['fg'],
-                                   font=('Consolas', 9), relief=tk.FLAT)
-        self.input_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
+        self.ivar = tk.StringVar()
+        self.inp = tk.Entry(self.ifr, textvariable=self.ivar,
+                           bg=THEME['bg_input'], fg=THEME['fg'],
+                           insertbackground=THEME['fg'],
+                           font=('Consolas', 9), relief=tk.FLAT,
+                           highlightbackground=THEME['border'],
+                           highlightthickness=1, cursor='xterm')
+        self.inp.pack(fill=tk.X, expand=True)
+        self.inp.bind('<Return>', self._send)
 
-        send_btn = tk.Button(self.input_frame, text='>', bg=THEME['border'],
-                            fg=THEME['fg'], font=('Segoe UI', 10), width=3,
-                            relief=tk.FLAT)
-        send_btn.pack(side=tk.RIGHT)
+        # ── Mouse events on master ──
+        # Click/move/release for drag-vs-click detection
+        self.m.bind('<Button-1>', self._on_down)
+        self.m.bind('<B1-Motion>', self._on_move)
+        self.m.bind('<ButtonRelease-1>', self._on_release)
 
-        # Bindings
-        self.status_frame.bind('<Button-1>', self._toggle_expand)
-        self.expanded_frame.bind('<Button-1>', lambda e: None)  # Prevent double-toggle
-        self.input_entry.bind('<Return>', self._send)
-        send_btn.configure(command=self._send)
-        self.root.bind('<FocusIn>', lambda e: self._focus_input)
+        # Right-click = exit
+        self.m.bind('<Button-3>', lambda e: self.root.destroy())
 
-        # Close handling
-        self.root.protocol('WM_DELETE_WINDOW', self._on_close)
-        self.status_frame.bind('<Button-3>', self._exit)  # Right-click = exit
+        # Prevent interactive widgets from starting drag
+        self.txt.bind('<Button-1>', lambda e: e.widget.focus_set())
+        self.inp.bind('<Button-1>', lambda e: e.widget.focus_set())
+        self.inp.bind('<B1-Motion>', lambda e: 'break')
+        self.inp.bind('<ButtonRelease-1>', lambda e: 'break')
 
-    def _bind_drag(self):
-        """Make status frame draggable."""
-        self.status_frame.bind('<Button-1>', self._on_drag_start)
-        self.root.bind('<B1-Motion>', self._on_drag_motion)
-        self.status_frame.bind('<ButtonRelease-1>', self._on_drag_end)
-        self.expanded_frame.bind('<Button-1>', self._on_drag_start)
-        self.expanded_frame.bind('<ButtonRelease-1>', self._on_drag_end)
+        # Window close = minimize (keep running)
+        self.root.protocol('WM_DELETE_WINDOW', lambda: self.root.withdraw())
 
-    def _on_drag_start(self, event):
-        """Start dragging (but don't toggle expand if dragging)."""
-        if self.expanded and event.widget in (self.status_frame,):
-            # Only drag from status bar
-            self.drag_data = {'x': event.x_root, 'y': event.y_root,
-                            'start_expand': self.expanded}
-        elif not self.expanded:
-            self.drag_data = {'x': event.x_root, 'y': event.y_root,
-                            'start_expand': self.expanded}
-
-    def _on_drag_motion(self, event):
-        """Move window while dragging."""
-        dx = event.x_root - self.drag_data.get('x', event.x_root)
-        dy = event.y_root - self.drag_data.get('y', event.y_root)
-        if abs(dx) > 3 or abs(dy) > 3:
-            newx = self.root.winfo_x() + dx
-            newy = self.root.winfo_y() + dy
-            self.root.geometry(f'+{max(0, newx)}+{max(0, newy)}')
-            self.drag_data['x'] = event.x_root
-            self.drag_data['y'] = event.y_root
-
-    def _on_drag_end(self, event):
-        """Save position after dragging."""
-        self._save_position()
-
-    def _toggle_expand(self, event):
-        """Toggle expanded/collapsed on click (not drag)."""
-        if not self.expanded:
-            self.expanded = True
-            self.expanded_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=0)
-            self.root.geometry(f'320x{320}')
-            self._save_position()
-            self._show_response()
-        else:
-            self._collapse()
-
-    def _collapse(self):
-        self.expanded = False
-        self.expanded_frame.pack_forget()
-        self.root.geometry(f'175x30')
-        self._save_position()
-
-    def _show_response(self):
-        """Display last AI response in the expanded view."""
-        state = self.state
-        response = read_response()
-
-        self.resp_text.configure(state=tk.NORMAL)
-        self.resp_text.delete('1.0', tk.END)
-
-        if state in ('WAITING', 'NEW'):
-            my_input = read_input()
-            if my_input:
-                self.resp_text.insert(tk.END, f'You typed: {my_input}\n\n', 'input')
-                self.resp_text.tag_config('input', foreground='#888888')
-
-        if state == 'NEW' and response:
-            self.resp_text.insert(tk.END, response, 'response')
-            self.resp_text.tag_config('response', foreground='#00ff88')
-            self.last_response_shown = response
-        elif state == 'WAITING':
-            self.resp_text.insert(tk.END, 'Waiting for response...', '#888888')
-        else:
-            self.resp_text.insert(tk.END, 'No response yet', '#555555')
-
-        self.resp_text.configure(state=tk.DISABLED)
-        self.resp_text.see(tk.END)
-
-    def _send(self):
-        """Send the message from input field."""
-        text = self.input_var.get().strip()
-        if not text:
+    # ── Drag vs Click ──
+    def _on_down(self, event):
+        """Record position. Skip interactive widgets."""
+        if event.widget in (self.txt, self.inp, self.ifr):
             return
-        if send_message(text):
-            self.input_var.set('')
-            # Update local state
-            self.state = 'WAITING'
-            self._update_visuals()
-            self._show_response()
-        self.input_entry.focus_set()
+        self._dragging = False
+        self._drag_start = (event.x_root, event.y_root,
+                           self.root.winfo_x(), self.root.winfo_y())
 
-    def _focus_input(self, event):
+    def _on_move(self, event):
+        """If past threshold, drag the window."""
+        if not self._drag_start:
+            return
+        dx = event.x_root - self._drag_start[0]
+        dy = event.y_root - self._drag_start[1]
+        if abs(dx) >= DRAG_THRESH or abs(dy) >= DRAG_THRESH:
+            self._dragging = True
+            wx = max(0, self._drag_start[2] + dx)
+            wy = max(0, self._drag_start[3] + dy)
+            self.root.geometry(f'+{wx}+{wy}')
+
+    def _on_release(self, event):
+        """If not dragged, treat as click → toggle."""
+        if not self._drag_start:
+            return
+        if event.widget in (self.txt, self.inp, self.ifr):
+            self._drag_start = None
+            return
+        if not self._dragging:
+            self._toggle()
+        self._drag_start = None
+
+    # ── UI ──
+    def _toggle(self):
+        self.expanded = not self.expanded
         if self.expanded:
-            self.input_entry.focus_set()
+            self.pn.pack(fill=tk.BOTH, expand=True)
+            self.root.geometry(f'{EXP_W}x{EXP_H}')
+            self._show_resp()
+            self.inp.focus_set()
+        else:
+            self.pn.pack_forget()
+            self.root.geometry(f'{COL_W}x{COL_H}')
+        save_pos(self)
 
-    def _poll_state(self):
-        """Poll .pi-status/state and update UI."""
-        new_state = read_state()
+    def _show_resp(self):
+        self.txt.configure(state=tk.NORMAL)
+        self.txt.delete('1.0', tk.END)
 
-        if new_state != self.state:
+        if self.state == 'WAITING':
+            i = read_input()
+            if i:
+                self.txt.insert(tk.END, f'You: {i}\n\n', 'dim')
+                self.txt.tag_config('dim', foreground=THEME['fg_dim'])
+            self.txt.insert(tk.END, 'Waiting...', 'waiting')
+            self.txt.tag_config('waiting', foreground=THEME['waiting'])
+        elif self.state == 'NEW':
+            i = read_input()
+            if i:
+                self.txt.insert(tk.END, f'You: {i}\n\n', 'dim')
+                self.txt.tag_config('dim', foreground=THEME['fg_dim'])
+            r = read_response()
+            if r:
+                self.txt.insert(tk.END, r, 'resp')
+                self.txt.tag_config('resp', foreground=THEME['fg'])
+            else:
+                self.txt.insert(tk.END, '(empty)', 'dim')
+        else:
+            self.txt.insert(tk.END, 'Idle — type a message below.', 'dim')
+            self.txt.tag_config('dim', foreground=THEME['fg_dim'])
+
+        self.txt.configure(state=tk.DISABLED)
+        self.txt.see(tk.END)
+
+    def _send(self, event=None):
+        text = self.ivar.get().strip()
+        if text and send_message(text):
+            self.ivar.set('')
+            self.state = 'WAITING'
+            self._update()
+            self._show_resp()
+        self.inp.focus_set()
+
+    # ── Polling ──
+    def _poll(self):
+        s = read_state()
+        if s != self.state:
             old = self.state
-            self.state = new_state
+            self.state = s
+            if s == 'NEW':
+                if not self.expanded:
+                    self.expanded = True
+                    self.pn.pack(fill=tk.BOTH, expand=True)
+                    self.root.geometry(f'{EXP_W}x{EXP_H}')
+                    self._show_resp()
+            elif old == 'NEW' and s in ('DONE', 'IDLE'):
+                self.expanded = False
+                self.pn.pack_forget()
+                self.root.geometry(f'{COL_W}x{COL_H}')
+                save_pos(self)
+        self._update()
+        self.root.after(200, self._poll)
 
-            # Auto-expand on NEW (unread reply)
-            if new_state == 'NEW' and not self.expanded:
-                self.expanded = True
-                self.expanded_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=0)
-                self.root.geometry('320x320')
-                self._show_response()
+    def _update(self):
+        color = {
+            'IDLE': THEME['idle'],
+            'WORKING': THEME['working'],
+            'DONE': THEME['done'],
+            'WAITING': THEME['waiting'],
+            'NEW': THEME['new'],
+        }.get(self.state, THEME['idle'])
+        self.dot.configure(fg=color)
+        self.lbl.configure(text=self.state.lower().replace('_', ' '))
 
-            # Auto-collapse from NEW→IDLE after reading
-            if old == 'NEW' and new_state in ('DONE', 'IDLE'):
-                self._collapse()
+    def _load_pos(self):
+        p = load_pos()
+        self.root.geometry(f'{COL_W}x{COL_H}+{p.get("x", 1200)}+{p.get("y", 20)}')
 
-        self._update_visuals()
-        self.root.after(POLL_MS, self._poll_state)
-
-    def _update_visuals(self):
-        """Update dot color and label based on current state."""
-        state = self.state
-        dot_color = THEME.get(f'state_{state}', THEME['state_IDLE'])
-
-        self.dot.configure(fg=dot_color)
-
-        labels = {
-            'IDLE': 'idle',
-            'WORKING': 'working',
-            'DONE': 'done',
-            'WAITING': 'waiting',
-            'NEW': 'new message',
-        }
-        self.state_label.configure(text=labels.get(state, 'idle'))
-
-        # Pulse animation for WORKING and WAITING
-        if state in ('WORKING', 'WAITING'):
-            self.dot.after(600, self._pulse)
-
-    def _pulse(self):
-        """Breathe animation for active states."""
-        fg = self.dot.cget('fg')
-        self.dot.configure(fg='#222222')
-        self.root.after(300, lambda: self.dot.configure(fg=fg))
-        if self.state in ('WORKING', 'WAITING'):
-            self.root.after(900, self._pulse)
-
-    def _load_position(self):
-        """Load saved position."""
-        pos = load_pos()
-        x, y = pos.get('x', DEFAULT_POS['x']), pos.get('y', DEFAULT_POS['y'])
-        self.root.geometry(f'175x30+{x}+{y}')
-
-    def _save_position(self):
-        """Save current position."""
-        pos = {
-            'x': self.root.winfo_x(),
-            'y': self.root.winfo_y(),
-            'w': self.root.winfo_width(),
-            'h': self.root.winfo_height(),
-        }
-        save_pos(pos)
-
-    def _start_poll(self):
-        """Start the state polling loop."""
-        self.root.after(POLL_MS, self._poll_state)
-
-    def _on_close(self):
-        """Minimize instead of close."""
-        self._collapse()
-        self.root.withdraw()  # Hide to tray
-        # Re-show on any future event (poll loop brings it back briefly)
-        # Actually, keep it hidden but running. Re-show after 2s then minimize again.
-        self.root.after(2000, self._peek)
-
-    def _peek(self):
-        """Briefly show, then hide again."""
-        self.root.deiconify()
-        self.root.after(500, self._auto_hide)
-
-    def _auto_hide(self):
-        self.root.withdraw()
-        self.root.after(3000, self._peek)
-
-    def _exit(self, event=None):
-        """Right-click to exit completely."""
-        save_pos({'x': self.root.winfo_x(), 'y': self.root.winfo_y()})
-        self.root.destroy()
-        sys.exit(0)
-
-    def run(self):
-        self.root.after(0, lambda: self._update_visuals())
-        self.root.mainloop()
-
-# ── Main ──
 if __name__ == '__main__':
     app = BubbleApp()
-    app.run()
+    app.root.mainloop()
