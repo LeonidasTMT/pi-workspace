@@ -81,7 +81,8 @@ Default section order:
 
 - User prefers explicit review/approval before files are written
 - No paid third-party APIs — use browser automation or free tools only
-- User uses Opera GX with `--remote-debugging-port=9222` for CDP automation
+- Uses Chromium-based browsers with `--remote-debugging-port=9222` for CDP automation
+- Browser auto-launch: Opera → Chrome → Edge (first found wins)
 - Search/extraction must create new tabs, never touch existing user tabs
 - User works on Windows with cp932 console encoding — route Unicode output through temp files or stdout.buffer
 
@@ -100,8 +101,8 @@ Default section order:
 - **Runtime:** Node.js
 - **Agent Framework:** [pi](https://pi.dev)
 - **Package Manager:** npm
-- **Browser Automation:** Opera GX via Chrome DevTools Protocol (CDP)
-- **Search:** `search/web_search.py` CLI via Opera CDP (port 9222)
+- **Browser Automation:** Chromium-based browsers via CDP (auto-launch: Opera → Chrome → Edge)
+- **Search:** `search/web_search.py` CLI via CDP (port 9222, auto-launch support)
 
 ## Coding Standards
 

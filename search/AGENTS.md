@@ -1,11 +1,12 @@
 # Purpose
 
-Web search and page extraction via Opera Chrome DevTools Protocol (CDP).
+Web search and page extraction via Chromium-based browser CDP (Opera, Chrome, Edge).
 
 ## Ownership
 
 - Owned by root project AGENTS.md
-- All scripts here connect to the user's Opera GX on port 9222
+- All scripts connect to a Chromium-based browser on port 9222 via CDP
+- Auto-launches browser if not already running (Opera → Chrome → Edge priority)
 
 ## Local Contracts
 
@@ -13,15 +14,21 @@ Web search and page extraction via Opera Chrome DevTools Protocol (CDP).
 - Created tabs are **closed immediately** after extraction
 - User's existing tabs are **never** navigated, modified, or closed
 - Output is routed through UTF-8 temp files + `sys.stdout.buffer` to bypass Windows cp932 encoding
+- **Browser auto-launch**: if no browser is listening on CDP port, `ensure_browser()` launches Opera → Chrome → Edge (first found)
+- **Browser priority**: Opera → Chrome → Edge — configurable via `BROWSER_PATHS` list
+- **User data isolation**: Chrome/Edge use isolated `--user-data-dir` to avoid profile conflicts
 
 ## Work Guidance
 
 - Use `asyncio` + `websockets` library for CDP connections
 - `send_cmd()` sends JSON-RPC messages, waits for matching `id` response
-- `search()` → Google search with `.zReHs` selector, returns `[title, cite, link]`
-- `extract()` → Navigate to URL, return `document.body.innerText` + `document.title`
+- `ensure_browser()` → auto-detects & launches browser with `--remote-debugging-port`
+- `find_browser()` → scans `BROWSER_PATHS` in priority order (Opera → Chrome → Edge)
+- `create_new_tab()` → calls `ensure_browser()` then creates tab via CDP
+- `search()` → Google search with ARIA tree pipeline, returns `[title, cite, link]`
+- `extract_url()` → Navigate to URL, return ARIA-pruned content + title
 - CDP `Runtime.evaluate` returns `objectId` for objects — wrap in `JSON.stringify()` in JS expressions
-- Opera CDP endpoints: `/json`, `/json/version`, `/json/close/{tabId}`
+- Opera/Chrome CDP endpoints: `/json`, `/json/version`, `/json/close/{tabId}`
 
 ## Verification
 

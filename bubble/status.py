@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-Pi Status Bubble — always-on-top floating status + message bubble.
+Pi Status Bubble — always-on-top floating status bubble.
 
-Auto-launched via ~/.bashrc.
-Polls .pi-status/state every 200ms.
+Compact: 150×24 collapsed, 240×180 expanded (response + action + elapsed).
 Drag to move. Click to expand/collapse.
-Type + Enter to send messages. Right-click to exit.
+Type + Enter to send. Right-click to exit.
 
 Launch: python bubble/status.py
 """
@@ -20,8 +19,9 @@ WORKSPACE = _WORKSPACE
 
 PI_STATUS = os.path.join(WORKSPACE, '.pi-status')
 STATE_FILE = os.path.join(PI_STATUS, 'state')
+LAST_RESPONSE_FILE = os.path.join(PI_STATUS, 'last-response')
+LAST_ACTION_FILE = os.path.join(PI_STATUS, 'last-action')
 INPUT_FILE = os.path.join(PI_STATUS, 'input')
-RESPONSE_FILE = os.path.join(PI_STATUS, 'response')
 HISTORY_FILE = os.path.join(PI_STATUS, 'history')
 POSITION_FILE = os.path.join(
     os.environ.get('LOCALAPPDATA', os.path.expanduser('~')),
@@ -31,35 +31,29 @@ os.makedirs(PI_STATUS, exist_ok=True)
 
 # ── Theme ──
 THEME = {
-    'bg':        '#1e1e2e',
-    'fg':        '#cdd6f4',
-    'fg_dim':    '#6c7086',
-    'border':    '#313244',
-    'bg_input':  '#181825',
-    'IDLE':      '#6c7086',
-    'WORKING':   '#f9e24c',
-    'THINKING':  '#cba6f7',
-    'WRITING':   '#f38ba8',
-    'EDITING':   '#fab387',
-    'DONE':      '#a6e3a1',
-    'WAITING':   '#89b4fa',
-    'NEW':       '#a6e3a1',
-    'INSTALLING':'#89b4fa',
-    'EXPLORING': '#94e2d0',
+    'bg':       '#1e1e2e',
+    'fg':       '#cdd6f4',
+    'fg_dim':   '#6c7086',
+    'border':   '#313244',
+    'bg_input': '#181825',
+    'bg_resp':  '#181825',
+    'IDLE':     '#6c7086',
+    'WORKING':  '#f9e24c',
+    'THINKING': '#cba6f7',
+    'WRITING':  '#f38ba8',
+    'EDITING':  '#fab387',
+    'DONE':     '#a6e3a1',
+    'WAITING':  '#89b4fa',
+    'NEW':      '#a6e3a1',
+    'EXPLORING':'#94e2d0',
+    'COMPACTING':'#f9e24c',
 }
 
-# Human labels
 STATE_LABELS = {
-    'IDLE': 'idle',
-    'WORKING': 'working',
-    'THINKING': 'thinking',
-    'WRITING': 'writing',
-    'EDITING': 'editing',
-    'DONE': 'done',
-    'WAITING': 'waiting',
-    'NEW': 'new message',
-    'INSTALLING': 'installing',
-    'EXPLORING': 'exploring',
+    'IDLE': 'idle', 'WORKING': 'working', 'THINKING': 'thinking',
+    'WRITING': 'writing', 'EDITING': 'editing', 'DONE': 'done',
+    'WAITING': 'waiting', 'NEW': 'new', 'EXPLORING': 'exploring',
+    'COMPACTING': 'compacting',
 }
 
 # ── File I/O ──
@@ -67,8 +61,12 @@ def read_state():
     try: return open(STATE_FILE).read().strip()
     except: return 'IDLE'
 
-def read_response():
-    try: return open(RESPONSE_FILE, encoding='utf-8').read().strip()[:2000]
+def read_last_response():
+    try: return open(LAST_RESPONSE_FILE, encoding='utf-8').read().strip()
+    except: return ''
+
+def read_last_action():
+    try: return open(LAST_ACTION_FILE, encoding='utf-8').read().strip()
     except: return ''
 
 def read_input():
@@ -100,9 +98,10 @@ def save_pos(app):
 # ── Tkinter ──
 import tkinter as tk
 
-COL_W, COL_H = 185, 32
-EXP_W, EXP_H = 300, 380
+COL_W, COL_H = 150, 24
+EXP_W, EXP_H = 320, 220
 DRAG_THRESH = 5
+RESPONSE_LINES = 8  # max lines in response preview
 
 class BubbleApp:
     def __init__(self):
@@ -114,6 +113,9 @@ class BubbleApp:
 
         self.state = 'IDLE'
         self.expanded = False
+        self.last_response = ''
+        self.last_action = ''
+        self.state_since = time.time()
         self._drag_start = None
         self._dragging = False
 
@@ -123,74 +125,87 @@ class BubbleApp:
         self.root.after(200, self._poll)
 
     def _build(self):
-        """Single master frame — handles all mouse events."""
         self.m = tk.Frame(self.root, bg=THEME['bg'])
         self.m.pack(fill=tk.BOTH, expand=True)
 
-        # Status bar
+        # Compact status bar
         self.sbar = tk.Frame(self.m, bg=THEME['bg'])
-        self.sbar.pack(fill=tk.X, padx=6, pady=4)
+        self.sbar.pack(fill=tk.X, padx=4, pady=2)
 
         self.dot = tk.Label(self.sbar, text='\u25cf', fg=THEME['IDLE'],
-                            bg=THEME['bg'], font=('Segoe UI Emoji', 10))
-        self.dot.pack(side=tk.LEFT)
+                            bg=THEME['bg'], font=('Segoe UI Emoji', 8))
+        self.dot.pack(side=tk.LEFT, padx=(0, 2))
 
         self.lbl = tk.Label(self.sbar, text='idle', fg=THEME['fg'],
-                            bg=THEME['bg'], font=('Segoe UI', 9))
+                            bg=THEME['bg'], font=('Segoe UI', 8))
         self.lbl.pack(side=tk.LEFT)
 
-        # Expanded panel (hidden)
+        # Expanded panel
         self.pn = tk.Frame(self.m, bg=THEME['bg'])
 
-        tk.Frame(self.pn, bg=THEME['border'], height=1).pack(fill=tk.X, pady=(0, 4))
+        # Response preview (scrollable)
+        self.rscrl = tk.Scrollbar(self.pn, bg=THEME['border'],
+                                  activebackground=THEME['fg_dim'],
+                                  highlightbackground=THEME['border'],
+                                  highlightthickness=0, relief=tk.FLAT,
+                                  cursor='xterm', width=8)
+        self.rscrl.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 4), pady=2)
 
-        # Response display
-        self.txt = tk.Text(self.pn, bg=THEME['bg_input'], fg=THEME['fg'],
-                          font=('Consolas', 9), wrap=tk.WORD, state=tk.DISABLED,
-                          padx=6, pady=4, relief=tk.GROOVE, bd=1,
-                          highlightthickness=0, cursor='arrow')
-        self.txt.pack(fill=tk.BOTH, expand=True, padx=4, pady=2)
+        self.rtxt = tk.Text(self.pn, bg=THEME['bg_resp'], fg=THEME['fg'],
+                            font=('Consolas', 8), relief=tk.FLAT,
+                            insertbackground=THEME['fg'],
+                            borderwidth=0, padx=4, pady=2, wrap=tk.WORD,
+                            state=tk.DISABLED, yscrollcommand=self.rscrl.set,
+                            cursor='xterm')
+        self.rtxt.pack(side=tk.LEFT, fill=tk.BOTH, expand=True,
+                       padx=(4, 0), pady=2)
+        self.rscrl.config(command=self.rtxt.yview)
 
-        # Input
+        # Action + elapsed bar
+        self.abar = tk.Frame(self.pn, bg=THEME['bg'])
+        self.action_lbl = tk.Label(self.abar, text='', fg=THEME['fg'],
+                                   bg=THEME['bg'], font=('Segoe UI', 7),
+                                   anchor=tk.W)
+        self.action_lbl.pack(side=tk.LEFT, padx=(4, 0), pady=1)
+
+        self.elapsed_lbl = tk.Label(self.abar, text='', fg=THEME['fg'],
+                                    bg=THEME['bg'], font=('Segoe UI', 7),
+                                    anchor='e')
+        self.elapsed_lbl.pack(side=tk.RIGHT, padx=(0, 4), pady=1)
+
+        # Input bar
         self.ifr = tk.Frame(self.pn, bg=THEME['bg'])
-        self.ifr.pack(fill=tk.X, padx=4, pady=(0, 4))
-
         self.ivar = tk.StringVar()
         self.inp = tk.Entry(self.ifr, textvariable=self.ivar,
                            bg=THEME['bg_input'], fg=THEME['fg'],
                            insertbackground=THEME['fg'],
-                           font=('Consolas', 9), relief=tk.FLAT,
+                           font=('Consolas', 8), relief=tk.FLAT,
                            highlightbackground=THEME['border'],
                            highlightthickness=1, cursor='xterm')
-        self.inp.pack(fill=tk.X, expand=True)
+        self.inp.pack(fill=tk.X, padx=4, pady=2)
         self.inp.bind('<Return>', self._send)
 
-        # ── Mouse events on root — covers entire window ──
+        # Mouse events on root = full window hit area
         self.root.bind('<Button-1>', self._on_down)
         self.root.bind('<B1-Motion>', self._on_move)
         self.root.bind('<ButtonRelease-1>', self._on_release)
-
-        # Right-click = exit
         self.root.bind('<Button-3>', lambda e: self.root.destroy())
 
-        # Interactive widgets ignore drag (they handle their own clicks)
-        self.txt.bind('<Button-1>', lambda e: e.widget.focus_set())
+        # Input ignores drag
         self.inp.bind('<Button-1>', lambda e: e.widget.focus_set())
+        self.rtxt.bind('<Button-1>', lambda e: self.rtxt.focus_set())
 
-        # Window close = exit
         self.root.protocol('WM_DELETE_WINDOW', lambda: self.root.destroy())
 
     # ── Drag vs Click ──
     def _on_down(self, event):
-        """Record position. Skip interactive widgets."""
-        if event.widget in (self.txt, self.inp, self.ifr):
+        if event.widget in (self.inp, self.ifr, self.rtxt):
             return
         self._dragging = False
         self._drag_start = (event.x_root, event.y_root,
-                           self.root.winfo_x(), self.root.winfo_y())
+                            self.root.winfo_x(), self.root.winfo_y())
 
     def _on_move(self, event):
-        """If past threshold, drag the window."""
         if not self._drag_start:
             return
         dx = event.x_root - self._drag_start[0]
@@ -202,10 +217,9 @@ class BubbleApp:
             self.root.geometry(f'+{wx}+{wy}')
 
     def _on_release(self, event):
-        """If not dragged, treat as click → toggle."""
         if not self._drag_start:
             return
-        if event.widget in (self.txt, self.inp, self.ifr):
+        if event.widget in (self.inp, self.ifr, self.rtxt):
             self._drag_start = None
             return
         if not self._dragging:
@@ -216,43 +230,18 @@ class BubbleApp:
     def _toggle(self):
         self.expanded = not self.expanded
         if self.expanded:
+            self.abar.pack(fill=tk.X, padx=(0, 0))
             self.pn.pack(fill=tk.BOTH, expand=True)
+            self.ifr.pack(fill=tk.X, padx=4, pady=(2, 4))
             self.root.geometry(f'{EXP_W}x{EXP_H}')
-            self._show_resp()
             self.inp.focus_set()
+            self._update_expanded()
         else:
             self.pn.pack_forget()
+            self.abar.pack_forget()
+            self.ifr.pack_forget()
             self.root.geometry(f'{COL_W}x{COL_H}')
         save_pos(self)
-
-    def _show_resp(self):
-        self.txt.configure(state=tk.NORMAL)
-        self.txt.delete('1.0', tk.END)
-
-        if self.state == 'WAITING':
-            i = read_input()
-            if i:
-                self.txt.insert(tk.END, f'You: {i}\n\n', 'dim')
-                self.txt.tag_config('dim', foreground=THEME['fg_dim'])
-            self.txt.insert(tk.END, 'Waiting...', 'waiting')
-            self.txt.tag_config('waiting', foreground=THEME['waiting'])
-        elif self.state == 'NEW':
-            i = read_input()
-            if i:
-                self.txt.insert(tk.END, f'You: {i}\n\n', 'dim')
-                self.txt.tag_config('dim', foreground=THEME['fg_dim'])
-            r = read_response()
-            if r:
-                self.txt.insert(tk.END, r, 'resp')
-                self.txt.tag_config('resp', foreground=THEME['fg'])
-            else:
-                self.txt.insert(tk.END, '(empty)', 'dim')
-        else:
-            self.txt.insert(tk.END, 'Idle — type a message below.', 'dim')
-            self.txt.tag_config('dim', foreground=THEME['fg_dim'])
-
-        self.txt.configure(state=tk.DISABLED)
-        self.txt.see(tk.END)
 
     def _send(self, event=None):
         text = self.ivar.get().strip()
@@ -260,8 +249,29 @@ class BubbleApp:
             self.ivar.set('')
             self.state = 'WAITING'
             self._update()
-            self._show_resp()
         self.inp.focus_set()
+
+    def _elapsed(self):
+        secs = int(time.time() - self.state_since)
+        if secs < 60:
+            return f'{secs}s'
+        m, s = divmod(secs, 60)
+        return f'{m}m {s}s'
+
+    def _update_expanded(self):
+        # Update response preview
+        self.rtxt.config(state=tk.NORMAL)
+        self.rtxt.delete('1.0', tk.END)
+        resp = self.last_response or '(no response yet)'
+        self.rtxt.insert('1.0', resp)
+        self.rtxt.config(state=tk.DISABLED)
+
+        # Update action
+        act = self.last_action or STATE_LABELS.get(self.state, self.state.lower())
+        self.action_lbl.configure(text=act)
+
+        # Update elapsed
+        self.elapsed_lbl.configure(text=self._elapsed())
 
     # ── Polling ──
     def _poll(self):
@@ -269,19 +279,54 @@ class BubbleApp:
         if s != self.state:
             old = self.state
             self.state = s
+            self.state_since = time.time()
+
             if s == 'NEW':
                 if not self.expanded:
                     self.expanded = True
+                    self.abar.pack(fill=tk.X)
                     self.pn.pack(fill=tk.BOTH, expand=True)
+                    self.ifr.pack(fill=tk.X, padx=4, pady=(2, 4))
                     self.root.geometry(f'{EXP_W}x{EXP_H}')
-                    self._show_resp()
+                    self._update_expanded()
             elif old == 'NEW' and s in ('DONE', 'IDLE'):
                 self.expanded = False
                 self.pn.pack_forget()
+                self.abar.pack_forget()
+                self.ifr.pack_forget()
                 self.root.geometry(f'{COL_W}x{COL_H}')
                 save_pos(self)
+            elif self.expanded:
+                self._update_expanded()
+
+        # Refresh expanded view (elapsed timer)
+        if self.expanded and s in ('WORKING', 'THINKING', 'WRITING', 'EDITING', 'EXPLORING', 'COMPACTING'):
+            self.elapsed_lbl.configure(text=self._elapsed())
+
+        # Fetch response/action for expanded view
+        if self.expanded:
+            lr = read_last_response()
+            la = read_last_action()
+            if lr != self.last_response:
+                self.last_response = lr
+                self._update_expanded_text()
+            if la != self.last_action:
+                self.last_action = la
+                self._update_expanded_action()
+
         self._update()
         self.root.after(200, self._poll)
+
+    def _update_expanded_text(self):
+        self.rtxt.config(state=tk.NORMAL)
+        self.rtxt.delete('1.0', tk.END)
+        resp = self.last_response or '(no response yet)'
+        self.rtxt.insert('1.0', resp)
+        self.rtxt.config(state=tk.DISABLED)
+
+    def _update_expanded_action(self):
+        act = self.last_action or STATE_LABELS.get(self.state, self.state.lower())
+        self.action_lbl.configure(text=act)
 
     def _update(self):
         c = THEME.get(self.state, THEME['IDLE'])
