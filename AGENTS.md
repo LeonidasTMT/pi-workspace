@@ -75,7 +75,8 @@ Default section order:
 3. Refresh every affected Child DOX Index
 4. Remove stale or contradictory text
 5. Run existing verification when relevant
-6. Report any docs intentionally left unchanged and why
+6. **Push all changes to GitHub:** `git add -A && git commit -m "<conventional-commit>" && git push origin main`
+7. Report any docs intentionally left unchanged and why
 
 ## User Preferences
 
@@ -120,6 +121,15 @@ Default section order:
 - Use `bash` to verify file changes (ls, cat, etc.)
 - Prefer `edit` for modifying existing files, `write` for new files
 - Read files fully before making changes
+
+## Git Workflow — MANDATORY
+
+- After every meaningful change, run `git add -A && git commit -m "<conventional-commit>" && git push origin main`
+- Use Conventional Commits format: `feat: <summary>`, `fix: <summary>`, `docs: <summary>`, `chore: <summary>`
+- Commit messages should be concise but descriptive (one line, imperative mood)
+- Push immediately after committing — no unpushed local changes
+- Handle `nul` files by deleting them before `git add` (Windows reserved filename)
+- The DOX pre-commit hook will block deletions outside `tmp/` — this is intentional
 
 ## Child DOX Index
 
