@@ -134,6 +134,5 @@ Default section order:
 ## Child DOX Index
 
 - **hooks/** — DOX guard implementation (shell interception, git hooks)
-- **search/** — Web search and extraction via Opera CDP
-- **skills/** — AI agent skills, extensions, and reusable procedures
-- **tmp/** — Temporary prototypes (excluded from git, disposable)
+- **search/** — Web search and extraction via CDP (port 9222, auto-launch support)
+- **bubble/** — Pi status bubble (floating always-on-top window)

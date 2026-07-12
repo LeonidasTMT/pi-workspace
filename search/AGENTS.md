@@ -35,3 +35,7 @@ Web search and page extraction via Chromium-based browser CDP (Opera, Chrome, Ed
 - Run `python search/web_search.py search "test query" --num 3` — should return results
 - Run `python search/web_search.py extract "https://example.com"` — should return page content
 - Confirm user's Opera tabs are unchanged after each run
+
+## Child DOX Index
+
+No child DOX files.

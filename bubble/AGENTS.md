@@ -84,3 +84,7 @@ Tests signal protocol without launching GUI. 14 tests covering:
 - State read/write, whitespace handling
 - Message send, input/response, history append
 - Response truncation, position persistence
+
+## Child DOX Index
+
+No child DOX files.
