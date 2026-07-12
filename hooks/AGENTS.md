@@ -74,3 +74,7 @@ source hooks/destruct-guard.sh && echo "x" > tmp/test && rm tmp/test
 # Test override
 export DESTRUCT_OVERRIDE=1 && rm hooks/test && unset DESTRUCT_OVERRIDE
 ```
+
+## Child DOX Index
+
+No child DOX files.
