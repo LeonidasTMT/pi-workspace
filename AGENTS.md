@@ -102,7 +102,7 @@ Default section order:
 - **Runtime:** Node.js
 - **Agent Framework:** [pi](https://pi.dev)
 - **Package Manager:** npm
-- **Browser Automation:** Chromium-based browsers via CDP (auto-launch: Opera → Chrome → Edge)
+- **Browser Automation:** Chromium-based browsers via CDP (auto-launch: Opera → Chrome → Edge); resident bridge `search/cdp_bridge.py` holds the single long-lived connection (HTTP API :9333)
 - **Search:** `search/web_search.py` CLI via CDP (port 9222, auto-launch support)
 
 ## Coding Standards
