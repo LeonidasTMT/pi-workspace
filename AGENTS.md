@@ -136,3 +136,4 @@ Default section order:
 - **hooks/** — DOX guard implementation (shell interception, git hooks)
 - **search/** — Web search and extraction via CDP (port 9222, auto-launch support)
 - **bubble/** — Pi status bubble (floating always-on-top window)
+- **tools/** — One-shot agent-infrastructure scripts (compaction regression test)
