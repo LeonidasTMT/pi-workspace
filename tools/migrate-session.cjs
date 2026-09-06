@@ -19,12 +19,13 @@
  *        - custom_message    → handoff marker, customType "session-migrate", display:true;
  *                               participates in LLM context so future-me sees it as part of
  *                               the conversation.
- *   4. Prints the exact open command: `pi --session <new file>` (fresh process = fresh tools).
- *      With --verify, runs one cheap headless turn in the new session to prove it loads.
+ *   4. Prints the exact open command: `pi --session <new file>` (fresh process = fresh tools),
+ *      plus a ready-to-run verify line — one cheap headless turn that proves the new
+ *      session loads in a fresh process. The tool itself spawns nothing; pure file ops.
  *
  * Usage:
  *   node migrate-session.cjs <old.jsonl | partial-id> [--out-dir DIR] [--name TEXT]
- *                            [--handoff FILE|-] [--dry-run] [--verify]
+ *                            [--handoff FILE|-] [--dry-run]
  *
  * Notes:
  *   - Legacy v1 sessions (no id/parentId) are refused: open them once in current pi so it
@@ -37,7 +38,6 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
-const { execFileSync } = require("child_process");
 
 function fail(msg) {
 	console.error("migrate-session: " + msg);
@@ -48,14 +48,13 @@ function fail(msg) {
 
 const argv = process.argv.slice(2);
 let target = null, outDir = null, name = null, handoffFile = null;
-let dry = false, verify = false;
+let dry = false;
 for (let i = 0; i < argv.length; i++) {
 	const a = argv[i];
 	if (a === "--out-dir") outDir = argv[++i];
 	else if (a === "--name") name = argv[++i];
 	else if (a === "--handoff") handoffFile = argv[++i];
 	else if (a === "--dry-run") dry = true;
-	else if (a === "--verify") verify = true;
 	else if (a.startsWith("--")) fail("unknown flag " + a);
 	else if (!target) target = a;
 	else fail("unexpected argument: " + a);
@@ -63,7 +62,7 @@ for (let i = 0; i < argv.length; i++) {
 if (!target)
 	fail(
 		'usage: node migrate-session.cjs <old.jsonl|partial-id> [--out-dir DIR] [--name TEXT]\n' +
-			"       [--handoff FILE|-] [--dry-run] [--verify]"
+			"       [--handoff FILE|-] [--dry-run]"
 	);
 
 /* ------------------------------ resolve source */
@@ -189,20 +188,5 @@ console.log("");
 console.log("Open in a FRESH process (extensions/tools bind at start):");
 console.log(`  pi --session "${newPath}"`);
 
-if (verify) {
-	console.log("\n[verify] running one headless turn in the new session …");
-	// Clean env for the child: never inherit this process's PI_SESSION_* context.
-	const env = { ...process.env };
-	for (const k of Object.keys(env)) if (/^PI_(SESSION|SUBAGENT)/.test(k)) delete env[k];
-	const piCmd = process.platform === "win32" ? "pi.cmd" : "pi"; // npm shim on Windows is pi.cmd
-	try {
-		const r = execFileSync(piCmd, ["-p", "--session", newPath, "Reply with exactly MIGRATE_VERIFY_OK and nothing else."], {
-			timeout: 300000, maxBuffer: 4 * 1024 * 1024, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], env,
-			shell: process.platform === "win32", // let cmd resolve the npm shim + quoting
-		});
-		const last = (r.trim().split(/\n/).pop() || "").trim();
-		console.log(`[verify] output tail: ${last.slice(0, 300)}`);
-	} catch (e) {
-		fail("[verify] headless run failed:\n" + String(e.stdout || e.message).slice(-2000));
-	}
-}
+console.log("\nVerify it loads in a fresh process (one cheap headless turn):");
+console.log(`  pi -p --session "${newPath}" "Reply with exactly MIGRATE_VERIFY_OK and nothing else."`);
