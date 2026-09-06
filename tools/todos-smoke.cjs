@@ -168,6 +168,13 @@ const extPath = path.join(os.homedir(), ".pi", "agent", "extensions", "todos.ts"
 	check("board add via keystrokes", afterCount === beforeCount + 1, `before=${beforeCount} after=${afterCount}`);
 	lines = comp.render(80);
 	check("flash shows added msg", lines.some((l) => l.includes("added")));
+	// 'g' always starts a new top-level goal, even with an item selected
+	comp.handleInput("g");
+	for (const ch of ["G","O","A","L"]) comp.handleInput(ch);
+	comp.handleInput("\r");
+	const listRes = await run({ action: "list" });
+	const gItem = listRes.details.items.find((i) => i.text === "GOAL");
+	check("board 'g' adds top-level goal", !!gItem && gItem.parentId === null);
 	// move selection down a couple rows and quit
 	comp.handleInput("j");
 	comp.handleInput("j");
