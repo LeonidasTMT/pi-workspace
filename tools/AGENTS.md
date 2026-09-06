@@ -4,7 +4,7 @@
 
 ## Scripts
 
-- `migrate-session.cjs` — move an old pi conversation into a new chat file so it can be continued in a FRESH process, where extension tools (todo board etc.) bind at start. Clones the source session verbatim (all entries + custom state, e.g. todos-state), writes a fresh header (new uuid/timestamp; `parentSession` = source path for provenance), appends a `session_info` label plus a displayed `custom_message` handoff marker (`customType: "session-migrate"`); the source file is never modified. Flags: `--out-dir DIR`, `--name TEXT`, `--handoff FILE|-` (extra text prepended to auto-generated provenance facts), `--dry-run`. Prints the open command (`pi --session <new>`) plus a one-line headless verify that proves the clone loads in a fresh process.
+- `migrate-session.cjs` — move an old pi conversation into a new chat file so it can be continued in a FRESH process, where extension tools (todo board etc.) bind at start. Clones the source session verbatim (all entries + custom state, e.g. todos-state), writes a fresh header (new uuid/timestamp; `parentSession` = source path for provenance), appends a `session_info` label plus a displayed `custom_message` handoff marker (`customType: "session-migrate"`); the source file is never modified. Flags: `--out-dir DIR`, `--name TEXT` (session_info label only — filename is always `<timestamp>_<uuid>.jsonl`, so the source can never be clobbered), `--handoff FILE|-` (extra text prepended to auto-generated provenance facts), `--dry-run`. Prints the open command (`pi --session <new>`) plus a one-line headless verify that proves the clone loads in a fresh process.
 
 ## Verification
 

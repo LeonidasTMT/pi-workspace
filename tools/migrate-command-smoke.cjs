@@ -25,7 +25,6 @@ function check(name, cond, extra) {
 	check("registers /migrate", !!cmdDef);
 
 	const notes = []; // [level, text]
-	const ctx = { ui: { notify: (msg, level) => notes.push([level, msg]) }, mode: "tui", hasUI: false };
 
 	// ---- pick a tiny session file as throwaway source (source is never modified by the tool)
 	const sessDir = path.join(os.homedir(), ".pi", "agent", "sessions");
@@ -47,11 +46,24 @@ function check(name, cond, extra) {
 
 	if (!cmdDef || !src) process.exit(1);
 
+	const ctx = { ui: { notify: (msg, level) => notes.push([level, msg]) }, mode: "tui", hasUI: false, sessionManager: { getSessionFile: () => src } };
+
+	// run 1: no args → defaults to the current session file from ctx.sessionManager
+	notes.length = 0;
+	await cmdDef.handler("", ctx);
+	let info = notes.find(([lvl]) => lvl === "info")?.[1] ?? "";
+	check("default source = current session (no args)", /✓ migrated — source untouched/.test(info), info);
+	let m = info.match(/pi --session \"(.*)\"/);
+	const defPath = m ? m[1] : "";
+	if (defPath && fs.existsSync(defPath)) { fs.unlinkSync(defPath); check("cleanup removed default-run throwaway", !fs.existsSync(defPath)); }
+
+	// run 2: explicit source + --name label
+	notes.length = 0;
 	await cmdDef.handler(`${src} --name SMOKE-MIGRATE`, ctx);
-	const info = notes.find(([lvl]) => lvl === "info")?.[1] ?? "";
+	info = notes.find(([lvl]) => lvl === "info")?.[1] ?? "";
 	check("notify shows success", /✓ migrated as "SMOKE-MIGRATE"/.test(info), info);
 
-	const m = info.match(/pi --session "(.*)"/);
+	m = info.match(/pi --session "(.*)"/);
 	const newPath = m ? m[1] : "";
 	check("new session file exists", !!newPath && fs.existsSync(newPath), newPath);
 
