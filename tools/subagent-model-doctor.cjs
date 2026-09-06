@@ -109,12 +109,15 @@ function parseStore(file) {
 			// legacy object-map shape: { "<id>": { model, reason, expiresAt } }
 			entriesArr = Object.entries(raw.exclusions).map(([k, v]) => ({ id: k, ...v }));
 		}
-		return entriesArr.filter((e) => e && typeof e === "object").map((e) => ({
-			id: String(e.id || ""),
-			model: String(e.model || ""),
-			reason: String(e.reason || "").slice(0, 120),
-			expiresAt: Date.parse(e.expiresAt || "") || 0,
-		}));
+		return entriesArr.filter((e) => e && typeof e === "object").map((e) => {
+			// Current store schema is { modelId, provider, reason, recordedAt, expiresAt }; legacy entries used `model`.
+			const model = String(e.model || ((e.provider ? e.provider + "/" : "") + (e.modelId || "")));
+			// expiresAt is epoch-ms numeric in the current schema, ISO string in legacy entries.
+			const exp = typeof e.expiresAt === "number" && Number.isFinite(e.expiresAt)
+				? e.expiresAt
+				: (Date.parse(e.expiresAt || "") || 0);
+			return { id: String(e.id || ""), model, reason: String(e.reason || "").slice(0, 120), expiresAt: exp, raw: e };
+		});
 	} catch { return []; }
 }
 
@@ -140,7 +143,8 @@ function clearEntries(files) {
 		// atomic write: tmp file + rename (same pattern as pi-subagents ModelExclusionStore.flush)
 		const dir = path.dirname(file);
 		const tmp = path.join(dir, "model-exclusions-" + process.pid + ".tmp.json");
-		fs.writeFileSync(tmp, JSON.stringify({ version: 1, exclusions: keep.map((e) => ({ id: e.id, model: e.model, reason: e.reason, expiresAt: new Date(e.expiresAt).toISOString() })) }, null, 2));
+		// Lossless pass-through of kept entries (current and legacy schemas preserved verbatim).
+		fs.writeFileSync(tmp, JSON.stringify({ version: 1, exclusions: keep.map((e) => e.raw) }, null, 2));
 		try { fs.renameSync(tmp, file); } finally { try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch {} }
 		removedTotal += removed.length;
 		for (const e of removed) console.log("  cleared exclusion: " + e.model + " (was expires " + new Date(e.expiresAt).toISOString() + ") in " + file);
@@ -182,7 +186,7 @@ function clearEntries(files) {
 	console.log("[3/3] Verdict for model '" + targetModel + "':");
 	if (clearMode && liveRelevant.length) {
 		clearEntries(files);
-		const stillLive = findStoreFiles().flatMap((f) => parseStore(f)).filter((e) => relevant(e) && Date.parse(e.expiresAt || "") > Date.now());
+		const stillLive = findStoreFiles().flatMap((f) => parseStore(f)).filter((e) => relevant(e) && e.expiresAt > Date.now());
 		if (stillLive.length) fail(4, "VERDICT: STALE_EXCLUSION (entries survived clear - inspect manually: " + files.join(" ") + ")");
 		console.log("  cleared. server up + model loaded -> healthy.");
 		console.log("VERDICT: HEALTHY_AFTER_CLEAR");

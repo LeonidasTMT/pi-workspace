@@ -11,6 +11,13 @@ or any child spawn that dies with `Model "<provider>/<id>" not found`. Do **not*
 dispatch blindly — repeated failures each record a fresh ~24h exclusion, which is exactly why
 the failure "keeps" happening even after LM Studio comes back up.
 
+> **Local patch (2026-09-06):** on this machine, explicit-model exclusions no longer hard-block
+dispatches. The installed pi-subagents was patched (`src/runs/shared/model-fallback.ts` →
+`throwForExplicitModelExclusion`, `LOCAL-PATCH 2026-09-06` marker): a cached exclusion now only
+warns and the dispatch proceeds. The store is still recorded (~24h TTL) as diagnostics, so this
+runbook remains valid for pre-patch processes, inherited/fallback filtering, and root-causing any
+"not found" failure. Re-apply the patch after upgrading pi-subagents (procedure below).
+
 ## Step 1 — run the doctor (one command)
 
 ```bash
@@ -36,10 +43,13 @@ Exit codes: `0` healthy · `2` server down · `3` model missing/not loaded · `4
    subagents may never get that sync, so every lookup fails with "not found".
 2. Every failed attempt records the model in the pi-subagents exclusion store for ~24h:
    `%TEMP%\pi-subagents-<scope>\model-exclusions.json` (this machine: `C:\Users\User\AppData\Local\Temp\pi-subagents-user-User\model-exclusions.json`).
-3. **Explicit** model requests (`model: "lmstudio/<id>"` in a dispatch/mission) hard-fail against
-   that store until the TTL expires — even when the server and model are back up. Inherited or
-   fallback models are only *filtered* (they self-heal on the next attempt). This asymmetry is
-   why pinned-model pipelines look "permanently" broken while inherited ones recover.
+3. **Explicit** model requests (`model: "lmstudio/<id>"` in a dispatch/mission) hard-failed
+   against that store until the TTL expired — even when the server and model were back up.
+   Inherited or fallback models are only *filtered* (they self-heal on the next attempt). That
+   asymmetry is why pinned-model pipelines looked "permanently" broken while inherited ones
+   recovered. Since 2026-09-06 the explicit hard-fail is disabled by a local patch (warn-only);
+   inherited/fallback candidate filtering still applies, and any pre-patch process keeps both
+   behaviors until reloaded or restarted.
 
 ## Process-level staleness
 
@@ -52,12 +62,36 @@ is up; you cannot hot-register providers into an already-running ModelRuntime.
 
 - Check LM Studio before long missions: `node tools/subagent-model-doctor.cjs` (must exit 0).
 - Start order: LM Studio up + model loaded **before** launching pi sessions that use it.
-- Prefer `model: "inherit"` over pinned explicit models in subagent dispatches where the
-  parent's model is acceptable — inherited requests degrade gracefully on transient outages,
-  explicit ones hard-fail for up to 24h per recorded attempt.
+- Pinned explicit models are unblocked again (local patch makes exclusions warn-only), but a
+  pinned request still fails with "not found" when the child's ModelRuntime never synced —
+  prefer `model: "inherit"` where the parent's model is acceptable, since inherited requests
+  degrade gracefully on transient outages.
 - On any exclusion error: doctor first, then `--clear` only after step [1/3] proves the model
   is resolvable. Never hand-edit the store while a failure is still reproducible — you will just
   get re-recorded.
+
+## Local patch — explicit exclusions are warn-only (re-apply after upgrades)
+
+Applied 2026-09-06 to `~/.pi/agent/npm/node_modules/pi-subagents/src/runs/shared/model-fallback.ts`:
+
+- `throwForExplicitModelExclusion(model)` no longer throws; it logs
+  `[pi-subagents local-patch] requested model '...' has a cached exclusion (...); continuing dispatch without it.`
+  and returns. Marked with a `LOCAL-PATCH 2026-09-06` comment directly above the function.
+
+Notes:
+
+- Effective from when pi loads the extension (new process, or after `/reload`). A running session
+  keeps both its pre-patch module cache **and** any exclusions already loaded into memory — for a
+  live session: doctor `--clear`, then `/reload` (or start a fresh session).
+- Failure recording (`recordModelFailure`) is unchanged: exclusions are still written to the
+  store as diagnostics; they just no longer block. Inherited/fallback candidate filtering still
+  drops excluded models (with launch warnings).
+- A pi-subagents upgrade restores the upstream hard throw. After upgrading, grep for `LOCAL-PATCH`
+  in that file and re-apply if it is gone — replace the `throw new Error(...)` line with:
+
+```ts
+console.warn(`[pi-subagents local-patch] requested model '${model}' has a cached exclusion (reason: ${reason}${expiry}); continuing dispatch without it.`);
+```
 
 ## Related environment fix (sibling issue)
 
