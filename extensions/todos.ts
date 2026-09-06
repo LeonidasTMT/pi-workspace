@@ -123,7 +123,7 @@ function moveItem(id: number, dir?: "up" | "down" | "top", pos?: number): string
 	return `moved #${id} to priority ${nextIdx + 1}/${order.length}`;
 }
 
-function addItem(text: string, parentId?: number): Goal {
+function addItem(text: string, parentId?: number, status?: GoalStatus): Goal {
 	const parent = parentId === undefined ? null : goalById(parentId) ?? null;
 	if (parent && parent.parentId !== null) {
 		throw new Error(`#${parent.id} is not a top-level goal — only direct children are supported`);
@@ -136,6 +136,8 @@ function addItem(text: string, parentId?: number): Goal {
 		while (pos + 1 < state.items.length && state.items[pos + 1].parentId === parent.id) pos++;
 	}
 	state.items.splice(pos + 1, 0, goal);
+	if (status === "done") goal.status = "done";
+	else if (status === "doing") setStatus(goal.id, "doing");
 	return goal;
 }
 
@@ -569,7 +571,7 @@ export default function (pi: ExtensionAPI) {
 					break;
 				case "add": {
 					if (!params.text?.trim()) throw new Error("text required for add");
-					const g = addItem(params.text.trim(), params.parentId);
+					const g = addItem(params.text.trim(), params.parentId, params.status);
 					msg = `added #${g.id}${g.parentId ? ` under #${g.parentId}` : " (top-level)"}`;
 					break;
 				}
