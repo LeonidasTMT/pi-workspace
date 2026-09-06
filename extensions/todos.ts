@@ -299,14 +299,31 @@ function goalLine(theme: Theme, g: Goal): string {
 	return indent + mark + " " + text;
 }
 
+/** A group is "considered done" when the parent AND all its children are done (same rule as clearDone). */
+function groupConsideredDone(parentId: number): boolean {
+	const p = goalById(parentId);
+	if (!p || p.status !== "done") return false;
+	return state.items.filter((x) => x.parentId === parentId).every((k) => k.status === "done");
+}
+
+/** Items shown by renderers — children of fully-done groups are collapsed (display only, no state effect). */
+function visibleItems(): Goal[] {
+	return state.items.filter((g) => g.parentId === null || !groupConsideredDone(g.parentId));
+}
+
 function widgetLines(theme: Theme): string[] {
 	const items = state.items;
 	if (!items.length) return [];
+	const vis = visibleItems();
 	const lines = [progressLine(theme)];
+	if (!vis.length) {
+		lines.push(truncateToWidth(theme.fg("dim", `  all ${items.length} item(s) completed`), 100));
+		return lines;
+	}
 	const maxRows = 12;
-	items.forEach((g, i) => {
+	vis.forEach((g, i) => {
 		if (i >= maxRows) {
-			lines.push(theme.fg("dim", `      … +${items.length - maxRows} more`));
+			lines.push(theme.fg("dim", `      … +${vis.length - maxRows} more`));
 			return;
 		}
 		lines.push(truncateToWidth(goalLine(theme, g), 100));
@@ -334,8 +351,12 @@ function refreshUi(ctx: ExtensionContext): void {
 
 /** Plain-text board for the LLM. */
 function boardText(): string {
-	if (!state.items.length) return "(board empty — use add to plan sub-goals)";
-	return state.items
+	const items = state.items;
+	if (!items.length) return "(board empty — use add to plan sub-goals)";
+	const vis = visibleItems();
+	if (!vis.length)
+		return `(all ${items.length} item(s) completed — fully-done groups are collapsed; clearDone removes them)`;
+	return vis
 		.map((g) => `${goalById(g.id)?.parentId === null ? "" : "  "}[${g.status}] #${g.id} ${g.text}`)
 		.join("\n");
 }
@@ -389,11 +410,21 @@ class TodoBoard {
 			return;
 		}
 
-		const last = state.items.length - 1;
+		const vis = visibleItems();
+		if (!vis.length) {
+			// all groups collapsed (everything done): only add/clear/quit make sense here
+			if (matchesKey(data, "a") || matchesKey(data, "g")) this.startAdd(null);
+			else if (matchesKey(data, "c")) this.afterMutate(clearDone());
+			else if (matchesKey(data, Key.escape) || matchesKey(data, "q") || matchesKey(data, Key.ctrl("c")))
+				this.onClose?.();
+			return;
+		}
+		if (this.sel >= vis.length) this.sel = Math.max(0, vis.length - 1);
+		const last = vis.length - 1;
 		if (matchesKey(data, Key.up) || matchesKey(data, "k")) this.sel = Math.max(0, this.sel - 1);
 		else if (matchesKey(data, Key.down) || matchesKey(data, "j")) this.sel = Math.min(last, this.sel + 1);
 		else {
-			const g = state.items[this.sel];
+			const g = vis[this.sel];
 			switch (data) {
 				case "a":
 					// top-level selected → sub-goal under it; child selected → sibling
@@ -425,12 +456,10 @@ class TodoBoard {
 					break;
 				case "r":
 					removeItem(g.id);
-					this.sel = Math.min(this.sel, state.items.length - 1);
 					this.afterMutate(`removed #${g.id}`);
 					break;
 				case "c": {
 					const msg = clearDone();
-					this.sel = Math.max(0, Math.min(this.sel, state.items.length - 1));
 					this.afterMutate(msg);
 					break;
 				}
@@ -445,7 +474,8 @@ class TodoBoard {
 	}
 
 	private afterMutate(msg: string): void {
-		this.sel = Math.max(0, Math.min(this.sel, state.items.length - 1));
+		const visLen = visibleItems().length;
+		this.sel = visLen ? Math.max(0, Math.min(this.sel, visLen - 1)) : 0;
 		this.flash = msg;
 		this.onChanged?.();
 		this.invalidate();
@@ -469,7 +499,7 @@ class TodoBoard {
 	}
 
 	private startEdit(): void {
-		const g = state.items[this.sel];
+		const g = visibleItems()[this.sel];
 		if (!g) return;
 		this.mode = "input";
 		this.buf = g.text;
@@ -501,8 +531,19 @@ class TodoBoard {
 			} else {
 				lines.push(th.fg("dim", "  no goals yet — press a to add"));
 			}
+		} else if (!visibleItems().length) {
+			if (this.mode === "input")
+				lines.push(
+					truncateToWidth(`${th.fg("accent", "> ○ ")}${this.buf ? th.fg("text", this.buf) : th.fg("dim", "new goal…")}`, width),
+				);
+			else
+				lines.push(
+					th.fg("dim", `  all ${state.items.length} item(s) completed — c clears`),
+				);
 		} else {
-			state.items.forEach((g, i) => {
+			const vis = visibleItems();
+			if (this.sel >= vis.length) this.sel = Math.max(0, vis.length - 1);
+			vis.forEach((g, i) => {
 				const selected = i === this.sel;
 				const indent = g.parentId === null ? "" : "    ";
 				const mark =

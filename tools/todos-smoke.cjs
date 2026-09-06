@@ -181,6 +181,41 @@ const extPath = path.join(os.homedir(), ".pi", "agent", "extensions", "todos.ts"
 	comp.handleInput("q");
 	check("board closes on q", closed === true);
 
+	// 12. fully-done groups collapse in renderers (widget truncation fix)
+	const idOf = (r, text) => r.details.items.find((g) => g.text === text).id;
+	let rCol = await run({ action: "add", text: "collapse parent" });
+	const pId = idOf(rCol, "collapse parent");
+	rCol = await run({ action: "add", text: "collapse child A", parentId: pId });
+	const aId = idOf(rCol, "collapse child A");
+	rCol = await run({ action: "add", text: "collapse child B", parentId: pId });
+	const bId = idOf(rCol, "collapse child B");
+	await run({ action: "update", id: aId, status: "done" });
+	await run({ action: "update", id: bId, status: "done" });
+	await run({ action: "update", id: pId, status: "done" });
+	let rl = await run({ action: "list" });
+	check(
+		"collapse: fully-done group children hidden",
+		!rl.content[0].text.includes("collapse child A") && !rl.content[0].text.includes("collapse child B"),
+		`out=${rl.content[0].text.replace(/\n/g, " | ")}`,
+	);
+	check(
+		"collapse: done parent still shown",
+		rl.content[0].text.includes(`[done] #${pId}`),
+		`out=${rl.content[0].text.replace(/\n/g, " | ")}`,
+	);
+	await run({ action: "update", id: aId, status: "todo" });
+	rl = await run({ action: "list" });
+	check("collapse: reopening child re-expands group", rl.content[0].text.includes(`[todo] #${aId}`));
+	await run({ action: "update", id: aId, status: "done" });
+	rl = await run({ action: "list" });
+	check("collapse: done again → collapsed again", !rl.content[0].text.includes("collapse child A"));
+	const rcd = await run({ action: "clearDone" });
+	check(
+		"clearDone removes fully-done group",
+		rcd.details.items.every((g) => ![pId, aId, bId].includes(g.id)),
+		`remaining=${rcd.details.items.map((g) => g.id).join(",")}`,
+	);
+
 	console.log(failures ? `\n${failures} FAILURES` : "\nALL PASS");
 	process.exit(failures ? 1 : 0);
 })().catch((e) => { console.error("HARNESS ERROR", e); process.exit(2); });

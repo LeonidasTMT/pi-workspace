@@ -4,7 +4,7 @@
 
 ## Files
 
-- `todos.ts` — mirror of `~/.pi/agent/extensions/todos.ts`: the `todo` tool + `/todos` board widget. The **live file is canonical**; sync this copy after changes there. Persistence contract: every mutation (tool action or board edit) appends a full-state custom entry (`todos-state`); reconstruction replays the current branch, last write wins — so agent-driven goals survive compaction/branching/restart.
+- `todos.ts` — mirror of `~/.pi/agent/extensions/todos.ts`: the `todo` tool + `/todos` board widget. The **live file is canonical**; sync this copy after changes there. Persistence contract: every mutation (tool action or board edit) appends a full-state custom entry (`todos-state`); reconstruction replays the current branch, last write wins — so agent-driven goals survive compaction/branching/restart. Rendering: all renderers (widget, `/todos` dialog, LLM `boardText`) collapse groups whose parent AND every child are done to a single line — display-only, state is unchanged; `clearDone` removes such items.
 
 ## Verification
 
