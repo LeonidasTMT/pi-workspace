@@ -46,8 +46,9 @@ try {
   }
 
   const FINGERPRINT = "JSON.stringify({t:document.title,h:location.href," +
-    "cols:Array.prototype.map.call(document.querySelectorAll('#cols .bcol .grp'),function(e){return e.textContent})," +
-    "nitems:document.querySelectorAll('.item').length,nscenes:(typeof DATA!=='undefined')?DATA.length:-1})";
+    "buckets:Array.prototype.map.call(document.querySelectorAll('#nav .ncol1 .bitem'),function(e){return e.textContent})," +
+    "active:(document.querySelector('.bitem.active')||{}).textContent,head2:(document.querySelectorAll('#nav .lbl')[1]||{}).textContent," +
+    "nscenes:(typeof DATA!=='undefined')?DATA.length:-1,nscript:document.querySelectorAll('#nav .ncol2 .item').length})";
   const r = await send("Runtime.evaluate", { expression: FINGERPRINT, returnByValue: true });
   if (r.result && r.result.exceptionDetails) { console.error("EVAL EXCEPTION:", JSON.stringify(r.result.exceptionDetails)); process.exit(4); }
   const out = r.result && r.result.result ? r.result.result.value : null;
@@ -56,7 +57,7 @@ try {
   console.log(JSON.stringify(fp, null, 1));
   clearTimeout(watchdog);
   ws.close();
-  process.exit(fp.cols && fp.cols.length ? 0 : 6);
+  process.exit(fp.buckets && fp.buckets.length ? 0 : 6);
 } catch (e) {
   console.error("FAIL:", e.message); process.exit(1);
 }
